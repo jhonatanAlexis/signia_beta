@@ -4,9 +4,12 @@ from models import mongo, init_db
 from config import Config
 from flask_bcrypt import Bcrypt
 from bson.json_util import ObjectId
+from datetime import timedelta
 
 app = Flask(__name__)
 app.config.from_object(Config)
+app.config['JWT_ACCESS_TOKEN_EXPIRES'] = timedelta(hours=1) #configura el tiempo de expiracion GLOBAl del token a 1 hr
+#JWT_ACCESS_TOKEN_EXPIRES es lo que usa flask_jwt_extended para manejar el tiempo global del token
 
 bcrypt = Bcrypt(app)
 jwt = JWTManager(app)
@@ -47,7 +50,8 @@ def login():
     password = data.get('password')
 
     user = mongo.db.users.find_one({
-        'email': email
+        'email': email,
+        'nombre': nombre
     })
 
     if user and bcrypt.check_password_hash(user['password'], password):
