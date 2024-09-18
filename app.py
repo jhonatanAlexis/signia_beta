@@ -37,6 +37,46 @@ def registrar():
         return jsonify({'message': 'Usuario creado con exito'}), 200
     else:
         return jsonify({'message': 'Error al crear el usuario'}), 500
+    
+#endpoint para login
+@app.route('/login', methods=['POST'])
+def login():
+    data = request.get_json()
+    nombre = data.get('nombre')
+    email = data.get('email')
+    password = data.get('password')
+
+    user = mongo.db.users.find_one({
+        'email': email
+    })
+
+    if user and bcrypt.check_password_hash(user['password'], password):
+        access_token = create_access_token(identity=str(user["_id"]))
+        return jsonify({
+            'access_token': access_token,
+        }), 200
+    else:
+        return jsonify({'message': 'Credenciales invalidas'}), 401
+    
+#endpoint para obtener datos del usuario
+@app.route('/yo', methods=['GET'])
+@jwt_required()
+def yo():
+    user_id = get_jwt_identity()
+
+    user_id = ObjectId(user_id)
+
+    usuario = mongo.db.users.find_one({
+        '_id': user_id
+    },{
+        'password': 0
+    })
+
+    if usuario:
+        usuario['_id'] = str(usuario['_id'])
+        return jsonify(usuario), 200
+    else:
+        return jsonify({'message': 'Usuario no encontrado'}), 404
 
 if __name__ == '__main__':
     app.run(debug=True)
