@@ -133,11 +133,16 @@ def editarPerfil():
     celular = data.get('celular')
     fecha_nacimiento = data.get('fecha_nacimiento')
     nombre = data.get('nombre')
+    email = data.get('email')
+    password = data.get('password')
     apellido_paterno = data.get('apellido_paterno')
     apellido_materno = data.get('apellido_materno')
     user_id = get_jwt_identity()
 
     user_id = ObjectId(user_id)
+
+    if not data:
+        return jsonify({'message': 'No se recibieron datos para actualizar'}), 400
 
     #diccionario vacio
     datos_actualizados = {}
@@ -166,6 +171,15 @@ def editarPerfil():
         if not re.match(r'^[a-zA-Z\s]+$', apellido_materno):
             return jsonify({'message': 'Apellido materno debe contener solo caracteres alfabéticos y espacios'}), 400
         datos_actualizados['apellido_paterno'] = apellido_paterno
+
+    if email:
+        if not re.match(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$', email):
+            return jsonify({'message': 'Formato de correo electrónico invalido'}), 400
+        datos_actualizados['email'] = email
+
+    if password:
+        hashed_password = bcrypt.generate_password_hash(password).decode('utf-8')
+        datos_actualizados['password'] = hashed_password
 
     result = mongo.db.users.update_one(
         {'_id': user_id}, #filtro, lo que va a buscar
