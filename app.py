@@ -143,6 +143,15 @@ def editarPerfil():
 
     if not data:
         return jsonify({'message': 'No se recibieron datos para actualizar'}), 400
+    
+    # Verificamos si el usuario existe
+    usuario = mongo.db.users.find_one({
+        '_id': user_id
+    })
+    if not usuario:
+        return jsonify({
+            'message': 'Usuario no encontrado'
+        }), 404
 
     #diccionario vacio
     datos_actualizados = {}
@@ -190,6 +199,32 @@ def editarPerfil():
         return jsonify({'message': 'Datos actualizados correctamente'}), 200
     else:
         return jsonify({'message': 'No se actualizaron datos'}), 400
+
+#endpoint para eliminar cuenta
+@app.route('/eliminar_cuenta', methods=['DELETE'])
+@jwt_required()
+def eliminar_cuenta():
+    data = request.get_json()
+    password = data.get('password') #se necesitara la contraseña para eliminar la cuenta
+    user_id = get_jwt_identity()
+    user_id = ObjectId(user_id)
+
+    user = mongo.db.users.find_one({'_id': user_id})
+    if not user:
+        return jsonify({'message': 'No existe el usuario'}), 404
+    
+    if not password:
+        return jsonify({'message': 'Debes proporcionar la contraseña para eliminar la cuenta'}), 400
+
+    if not bcrypt.check_password_hash(user['password'], password):
+        return jsonify({'message': 'Contraseña incorrecta'}), 400
+
+    result = mongo.db.users.delete_one({'_id': user_id})
+
+    if result.deleted_count > 0:
+        return jsonify({'message': 'Cuenta eliminada correctamente'}), 200
+    else:
+        return jsonify({'message': 'No se pudo eliminar la cuenta'}), 400
 
 if __name__ == '__main__':
     app.run(debug=True)
