@@ -379,6 +379,9 @@ def mis_videos():
         'user_id': user_id
     })
 
+    if not videos:
+        return jsonify({'message': 'No se encontro ningun video'}), 404
+
     lista_videos = []
 
     for video in videos:
