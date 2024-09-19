@@ -1,19 +1,25 @@
 from flask import Flask, request, jsonify
 from flask_jwt_extended import JWTManager, create_access_token, jwt_required, get_jwt_identity
 from models import mongo, init_db
-from config import Config
+from config import Config, ConfigGmail, ConfigOutlook
 from flask_bcrypt import Bcrypt
 from bson.json_util import ObjectId
 from datetime import timedelta, datetime
 import re
+from flask_mail import Mail, Message
 
 app = Flask(__name__)
-app.config.from_object(Config)
-app.config['JWT_ACCESS_TOKEN_EXPIRES'] = timedelta(hours=1) #configura el tiempo de expiracion GLOBAl del token a 1 hr
-#JWT_ACCESS_TOKEN_EXPIRES es lo que usa flask_jwt_extended para manejar el tiempo global del token
 
+#configuracion para conexion mongo y jwt
+app.config.from_object(Config)
 bcrypt = Bcrypt(app)
 jwt = JWTManager(app)
+#configuracion para gmail
+app.config.from_object(ConfigGmail)
+mail_gmail = Mail(app)
+#configuracion para outlook
+app.config.from_object(ConfigOutlook)
+mail_outlook = Mail(app)
 
 init_db(app)
 
@@ -24,7 +30,7 @@ def registrar():
     nombre = data.get('nombre')
     apellido_paterno = data.get('apellido_paterno')
     apellido_materno = data.get('apellido_materno')
-    email = data.get('email')
+    email = data.get('email') #gmail o outlook
     password = data.get('password')
     fecha_nacimiento = data.get('fecha_nacimiento') #opcional
     celular = data.get('celular') #opcional
@@ -98,7 +104,7 @@ def login():
     })
 
     if user and bcrypt.check_password_hash(user['password'], password):
-        access_token = create_access_token(identity=str(user["_id"]))
+        access_token = create_access_token(identity=str(user["_id"]), expires_delta=timedelta(hours=1)) #expira el token en 1 hr
         return jsonify({
             'access_token': access_token,
         }), 200
@@ -225,6 +231,40 @@ def eliminar_cuenta():
         return jsonify({'message': 'Cuenta eliminada correctamente'}), 200
     else:
         return jsonify({'message': 'No se pudo eliminar la cuenta'}), 400
+
+#endpoint solicitar reestablecer contraseña
+@app.route('/solicitarRestablecerContraseña', methods=['POST'])
+def solicitarRestablecerContraseña():
+    data = request.get_json()
+    email = data.get('email')
+
+    user = mongo.db.users.find_one({'email': email})
+    if not user:
+        return jsonify({'message': 'No se encontro un usuario con ese email'}), 404
+    
+    reset_token = create_access_token(identity=str(user['_id']), expires_delta=timedelta(hours=1))
+
+    #envia el token al correo del usuario
+    reset_link = f"http://signia_beta/restaurar_contraseña/{reset_token}" #este sera el link el cual contendra el token
+    send_email(email, 'Restablecer tu contraseña', f'Usa este enlance para restablecer tu contraseña: {reset_link}') #llamara a la
+    #funcion que envia el correo
+
+    return jsonify({
+        'message': 'Se ha enviado un correo con el enlace para restablecer tu contraseña'
+    }), 200
+
+#funcion para mandar el correo
+#Message construye el correo
+#primero va el subject (asunto)
+#el destinatario debe estar en una lista
+#y por ultimo el cuerpo
+def send_email(destinatario, asunto, cuerpo, provider="gmail"): #se pone por default gmail p
+    if provider == "gmail":
+        msg = Message(subject=asunto, recipients=[destinatario], body=cuerpo, sender=app.config['MAIL_DEFAULT_SENDER']) #sender=app.config['MAIL_DEFAULT_SENDER'] especifica quien manda el correo
+        mail_gmail.send(msg) #envia el correo
+    elif provider == "outlook":
+        msg = Message(subject=asunto, recipients=[destinatario], body=cuerpo, sender=app.config['MAIL_DEFAULT_SENDER'])
+        mail_outlook.send(msg)
 
 if __name__ == '__main__':
     app.run(debug=True)
