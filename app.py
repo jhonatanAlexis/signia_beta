@@ -1,4 +1,5 @@
-from flask import Flask, request, jsonify
+import os
+from flask import Flask, request, jsonify, send_file
 from flask_jwt_extended import JWTManager, create_access_token, jwt_required, get_jwt_identity
 from models import mongo, init_db
 from config import Config, ConfigGmail, ConfigOutlook
@@ -10,7 +11,7 @@ from flask_mail import Mail, Message
 
 app = Flask(__name__)
 
-#configuracion para conexion mongo y jwt
+#configuracion para conexion mongo, jwt y ruta videos
 app.config.from_object(Config)
 bcrypt = Bcrypt(app)
 jwt = JWTManager(app)
@@ -30,7 +31,7 @@ def registrar():
     nombre = data.get('nombre')
     apellido_paterno = data.get('apellido_paterno')
     apellido_materno = data.get('apellido_materno')
-    email = data.get('email') #gmail o outlook
+    email = data.get('email')
     password = data.get('password')
     fecha_nacimiento = data.get('fecha_nacimiento') #opcional
     celular = data.get('celular') #opcional
@@ -66,6 +67,10 @@ def registrar():
     if not re.match(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$', email):
         return jsonify({'message': 'Email debe ser válido'}), 400
     
+    #llama a la funcion para validar el dominio del correo
+    if not validar_dominio(email):
+        return jsonify({'message': 'El correo debe ser gmail, outlook o hotmail'}), 400
+    
     #si se proporciona la fecha de nacimiento se hara todo
     if fecha_nacimiento: 
         if not re.match(r'^\d{4}-\d{2}-\d{2}$', fecha_nacimiento):
@@ -87,7 +92,8 @@ def registrar():
     else:
         return jsonify({'message': 'Error al crear el usuario'}), 500
     
-    
+def validar_dominio(email):
+    return email.endswith('@gmail.com') or email.endswith('@outlook.com') or email.endswith('@hotmail.com')
     
 #endpoint para login
 @app.route('/login', methods=['POST'])
@@ -265,6 +271,127 @@ def send_email(destinatario, asunto, cuerpo, provider="gmail"): #se pone por def
     elif provider == "outlook":
         msg = Message(subject=asunto, recipients=[destinatario], body=cuerpo, sender=app.config['MAIL_DEFAULT_SENDER'])
         mail_outlook.send(msg)
+
+#endpoint restablecer contraseña
+@app.route('/restaurar_contraseña', methods=['POST'])
+@jwt_required()
+def restaurar_contraseña():
+    user_id = get_jwt_identity()
+    user_id = ObjectId(user_id)
+    data = request.get_json()
+    password = data.get('password')
+
+    if not password:
+        return jsonify({'message': 'Tienes que poner una contraseña nueva'}), 400
+    
+    hashed_password = bcrypt.generate_password_hash(password).decode('utf-8')
+
+    user = mongo.db.users.find_one({'_id': user_id})
+
+    if not user:
+        return jsonify({'message': 'No se encontro un usuario con ese id'}), 404
+    else:
+        mongo.db.users.update_one({'_id': user_id}, {'$set': {'password': hashed_password}})
+        return jsonify({'message': 'Contraseña restablecida'}), 200
+    
+#endpoint subir videos
+@app.route('/subir_video', methods=['POST'])
+@jwt_required()
+def subir_video():
+    user_id = get_jwt_identity()
+    user_id = ObjectId(user_id)
+    user = mongo.db.users.find_one({'_id': user_id})
+    if not user:
+        return jsonify({'message': 'No se encontro un usuario'}), 404
+
+    #request_files contiene todos los archivos
+    #checa si hay algun archivo enviado con la clave 'archivo'
+    if 'archivo' not in request.files:
+        return jsonify({'message': 'No hay ningun archivo'}), 400
+    
+    #si si hay un archivo con esa clave se guarda
+    archivo = request.files['archivo']
+    #si el valor de esa clave esta vacio manda el msg
+    if archivo.filename == '':
+        return jsonify({'message': 'No se ha seleccionado un archivo'}), 400
+    
+    #os.path.join() crea la ruta completa donde se guardará el archivo
+    path_archivo = os.path.join(app.config['UPLOAD_FOLDER'], archivo.filename) #combina la carpeta de subida (UPLOAD_FOLDER que contiene la ruta de la carpeta uploads) con el nombre del archivo (file.filename).
+    archivo.save(path_archivo) #guarda el arhcivo en la carpeta
+
+    uploaded = mongo.db.videos.insert_one({
+        'archivo': archivo.filename,
+        "ruta_del_archivo": path_archivo,
+        "user_id": user_id
+    })
+
+    return jsonify({
+        'message': 'Archivo subido correctamente',
+        'id': str(uploaded.inserted_id),
+        'nombre_archivo': archivo.filename,
+        'ruta': path_archivo,
+        'id_user': str(user_id)
+    }), 201
+
+#endpoint obtener video por nombre
+@app.route('/obtener_video/<nombre_archivo>', methods=['GET'])
+@jwt_required()
+def obtener_videos(nombre_archivo):
+    user_id = get_jwt_identity()
+    user_id = ObjectId(user_id)
+    user = mongo.db.users.find_one({'_id': user_id})
+    if not user:
+        return jsonify({'message': 'No se encontro un usuario'}), 404
+    
+    video = mongo.db.videos.find_one({
+        'archivo': nombre_archivo,
+        'user_id': user_id
+    })
+
+    if not video:
+        return jsonify({'message': 'No se encontro el video'}), 404
+    
+    ruta_video = video['ruta_del_archivo']
+
+    #comprobar que el video exista en la carpeta
+    if not os.path.exists(ruta_video):
+        return jsonify({'message': 'El archivo no existe'}), 404
+
+    return jsonify({
+        'message': 'Video encontrado',
+        'ruta': ruta_video
+    }), 200
+
+    #return send_file(ruta_video) para enviar el archivo del video
+
+#endpoint obtener todos los videos del usuario
+@app.route('/mis_videos', methods=['GET'])
+@jwt_required()
+def mis_videos():
+    user_id = get_jwt_identity()
+    user_id = ObjectId(user_id)
+    user = mongo.db.users.find_one({'_id': user_id})
+    if not user:
+        return jsonify({'message': 'No se encontro un usuario'}), 404
+    
+    #obtener videos del usuario
+    videos = mongo.db.videos.find({
+        'user_id': user_id
+    })
+
+    lista_videos = []
+
+    for video in videos:
+        lista_videos.append({
+            'archivo': video['archivo'],
+            'ruta_del_archivo': video['ruta_del_archivo'],
+            'user_id': str(user_id),
+            '_id': str(video['_id'])
+        })
+
+    return jsonify({
+        'videos': lista_videos
+    }), 200
 
 if __name__ == '__main__':
     app.run(debug=True)

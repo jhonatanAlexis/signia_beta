@@ -6,6 +6,7 @@ load_dotenv()
 class Config:
     MONGO_URI = os.getenv("MONGO_URI")
     JWT_SECRET_KEY = os.getenv("JWT_SECRET")
+    UPLOAD_FOLDER = os.getenv("UPLOAD_FOLDER")
 
 class ConfigGmail:
     MAIL_SERVER = os.getenv("GMAIL_SERVER")
