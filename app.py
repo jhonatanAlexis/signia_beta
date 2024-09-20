@@ -322,6 +322,16 @@ def subir_video(categoria):
     
     #os.path.join() crea la ruta completa donde se guardará el archivo
     path_archivo = os.path.join(app.config['UPLOAD_FOLDER'], categoria,archivo.filename) #combina la carpeta de subida (UPLOAD_FOLDER que contiene la ruta base de la carpeta uploads), con la categoria y con el nombre del archivo (file.filename)
+
+    #verificar que no exista un video con el mismo nombre en la misma categoria en la base de datos
+    video = mongo.db.videos.find_one({'categoria': categoria, 'archivo': archivo.filename})
+    if video:
+        return jsonify({'message': 'Ya existe un video con ese nombre en la categoria'})
+    
+    #verificar que no exista un video con el mismo nombre en la misma categoria en las carpetas
+    if os.path.exists(path_archivo):
+        return jsonify({'message': 'Ya existe un video con ese nombre en la categoria'})
+    
     archivo.save(path_archivo) #guarda el arhcivo en la carpeta
 
     uploaded = mongo.db.videos.insert_one({
