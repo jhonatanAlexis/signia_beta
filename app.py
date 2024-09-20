@@ -295,9 +295,9 @@ def restaurar_contraseña():
         return jsonify({'message': 'Contraseña restablecida'}), 200
     
 #endpoint subir videos
-@app.route('/subir_video', methods=['POST'])
+@app.route('/subir_video/<categoria>', methods=['POST'])
 @jwt_required()
-def subir_video():
+def subir_video(categoria):
     user_id = get_jwt_identity()
     user_id = ObjectId(user_id)
     user = mongo.db.users.find_one({'_id': user_id})
@@ -315,14 +315,20 @@ def subir_video():
     if archivo.filename == '':
         return jsonify({'message': 'No se ha seleccionado un archivo'}), 400
     
+    #verificar que la categoria existe
+    categories = ['abecedario', 'casa', 'comida', 'deportes', 'familia', 'numeros']
+    if categoria not in categories:
+        return jsonify({'message': 'La categoria no existe'}), 400
+    
     #os.path.join() crea la ruta completa donde se guardará el archivo
-    path_archivo = os.path.join(app.config['UPLOAD_FOLDER'], archivo.filename) #combina la carpeta de subida (UPLOAD_FOLDER que contiene la ruta de la carpeta uploads) con el nombre del archivo (file.filename).
+    path_archivo = os.path.join(app.config['UPLOAD_FOLDER'], categoria,archivo.filename) #combina la carpeta de subida (UPLOAD_FOLDER que contiene la ruta base de la carpeta uploads), con la categoria y con el nombre del archivo (file.filename)
     archivo.save(path_archivo) #guarda el arhcivo en la carpeta
 
     uploaded = mongo.db.videos.insert_one({
         'archivo': archivo.filename,
         "ruta_del_archivo": path_archivo,
-        "user_id": user_id
+        "user_id": user_id,
+        "categoria": categoria
     })
 
     return jsonify({
@@ -330,7 +336,8 @@ def subir_video():
         'id': str(uploaded.inserted_id),
         'nombre_archivo': archivo.filename,
         'ruta': path_archivo,
-        'id_user': str(user_id)
+        'id_user': str(user_id),
+        'categoria': categoria
     }), 201
 
 #endpoint obtener video por nombre
@@ -395,6 +402,126 @@ def mis_videos():
     return jsonify({
         'videos': lista_videos
     }), 200
+
+#endpoint bsucar palabras por categoria
+@app.route('/buscar_por_categoria/<categoria>', methods=['GET'])
+@jwt_required()
+def buscar(categoria):
+    user_id = get_jwt_identity()
+    user_id = ObjectId(user_id)
+
+    user = mongo.db.users.find_one({'_id': user_id})
+    if not user:
+        return jsonify({'message': 'No se encontro un usuario'}), 404
+
+    videos = mongo.db.videos.find({
+        'user_id': user_id,
+        'categoria': categoria
+    })
+
+    if not videos:
+        return jsonify({'message': 'No se encontro ningun video'}), 404
+
+    lista_videos = []
+
+    for video in videos:
+        lista_videos.append({
+            'archivo': video['archivo'],
+            'ruta_del_archivo': video['ruta_del_archivo'],
+            'user_id': str(user_id),
+            '_id': str(video['_id'])
+        })
+
+    return jsonify({
+        'videos': lista_videos
+    })
+
+#endpoint borrar video
+@app.route('/borrar_video/<categoria>/<nombre_video>', methods=['DELETE'])
+@jwt_required()
+def borrar_video(categoria,nombre_video):
+    user_id = get_jwt_identity()
+    user_id = ObjectId(user_id)
+    user = mongo.db.users.find_one({'_id': user_id})
+    if not user:
+        return jsonify({'message': 'No se encontro un usuario'}), 404
+    
+    video = mongo.db.videos.find_one({
+        'user_id': user_id,
+        'archivo': nombre_video,
+        'categoria': categoria
+    })
+
+    if not video:
+        return jsonify({'message': 'No se encontro el video'}), 404
+    
+    ruta_archivo = video['ruta_del_archivo']
+    
+    #Borrar el video del usuario con la categoría
+    resultado = mongo.db.videos.delete_one({
+        'user_id': user_id,
+        'archivo': nombre_video,
+        'categoria': categoria
+    })
+
+    if resultado.deleted_count > 0:
+        if os.path.exists(ruta_archivo): #verifica si el archivo especificado en ruta_archivo realmente existe en el sistema
+            os.remove(ruta_archivo) # Eliminar el archivo del sistema de archivos
+        return jsonify({'message': 'Video eliminado con exito'}), 200
+    else:
+        return jsonify({'message': 'No se pudo eliminar el video'}), 400
+    
+#endpoint para actualizar video
+@app.route('/actualizar_video/<categoria>/<nombre_video>', methods=['PUT'])
+@jwt_required()
+def actualizar_video(categoria, nombre_video):
+    user_id = get_jwt_identity()
+    user_id = ObjectId(user_id)
+    user = mongo.db.users.find_one({'_id': user_id})
+    if not user:
+        return jsonify({'message': 'No se encontró un usuario'}), 404
+    
+    categories = ['abecedario', 'casa', 'comida', 'deportes', 'familia', 'numeros']
+    if categoria not in categories:
+        return jsonify({'message': 'La categoría no existe'}), 400
+
+    video = mongo.db.videos.find_one({
+        'user_id': user_id,
+        'archivo': nombre_video,
+        'categoria': categoria
+    })
+
+    if not video:
+        return jsonify({'message': 'No se encontró el video'}), 404
+    
+    ruta_archivo_existente = video['ruta_del_archivo']
+    
+    if 'archivo' not in request.files:
+        return jsonify({'message': 'No hay archivo'}), 400
+    
+    archivo = request.files['archivo']
+    if archivo.filename == '':
+        return jsonify({'message': 'No se seleccionó un archivo'}), 400
+
+    # Eliminar el archivo existente si se encuentra 
+    if os.path.exists(ruta_archivo_existente):
+        os.remove(ruta_archivo_existente)
+
+    # Guardar el nuevo archivo
+    path_archivo = os.path.join(app.config['UPLOAD_FOLDER'], categoria, archivo.filename)
+    archivo.save(path_archivo)
+
+    # Actualizar la base de datos
+    resultado = mongo.db.videos.update_one(
+        {'user_id': user_id, 'archivo': nombre_video, 'categoria': categoria},
+        {'$set': {'archivo': archivo.filename, 'ruta_del_archivo': path_archivo}}
+    )
+
+    if resultado.modified_count > 0:
+        return jsonify({'message': 'Video actualizado con éxito'}), 200
+    else:
+        return jsonify({'message': 'No se pudo actualizar el video'}), 400
+
 
 if __name__ == '__main__':
     app.run(debug=True)
