@@ -575,6 +575,9 @@ def crear_nombre_abecedario():
         return jsonify({'message': 'El nombre solo puede contener letras y espacios'}),400
     
     nombre = nombre.lower()
+
+    if mongo.db.nombres.find_one({'nombre': nombre}):
+        return jsonify({'message': 'El nombre ya existe'}), 400
     
     lista_videos = []
 
@@ -637,6 +640,10 @@ def translate():
     if archivo_audio == '':
         return jsonify({'message': 'No se proporcionó ningún audio'}), 400
     
+    # Validar formato de archivo CHECAR CUALES SON LOS FORMATOS
+    if not archivo_audio.filename.lower().endswith(('.wav', '.mp3', '.m4a')):
+        return jsonify({'message': 'Formato de archivo no válido. Aceptamos .wav, .mp3 o .m4a'}), 400
+    
     nombre_archivo = archivo_audio.filename.lower()
 
     audio_path = os.path.join(app.config['UPLOAD_FOLDER'], 'nombres_creados', nombre_archivo)
@@ -653,8 +660,12 @@ def translate():
     except sr.RequestError as e:
         return jsonify({'message': f'Error en el servicio de reconocimiento: {e}'}), 500
 
-    # Convertir el texto a minúsculas y obtener letras
-    nombre = text.lower()
+    #convierte el texto a minúsculas y obtiene las letras, eliminando espacios
+    nombre = ''.join(filter(str.isalpha, text.lower()))
+
+    if mongo.db.nombres.find_one({'nombre': nombre}):
+        return jsonify({'message': 'El nombre ya existe'}), 400
+
     lista_videos = []
     
     for letra in nombre:
