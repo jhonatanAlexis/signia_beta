@@ -8,6 +8,8 @@ from bson.json_util import ObjectId
 from datetime import timedelta, datetime
 import re
 from flask_mail import Mail, Message
+import speech_recognition as sr
+from werkzeug.utils import secure_filename
 
 app = Flask(__name__)
 
@@ -35,6 +37,10 @@ def registrar():
     password = data.get('password')
     fecha_nacimiento = data.get('fecha_nacimiento') #opcional
     celular = data.get('celular') #opcional
+
+    nombre = nombre.lower()
+    apellido_paterno = apellido_paterno.lower()
+    apellido_materno = apellido_materno.lower()
     
     #verifica que los campos obligatorios si esten
     if not nombre or not apellido_materno or not apellido_paterno or not email or not password:
@@ -152,6 +158,10 @@ def editarPerfil():
     user_id = get_jwt_identity()
 
     user_id = ObjectId(user_id)
+
+    nombre = nombre.lower()
+    apellido_paterno = apellido_paterno.lower()
+    apellido_materno = apellido_materno.lower()
 
     if not data:
         return jsonify({'message': 'No se recibieron datos para actualizar'}), 400
@@ -320,11 +330,14 @@ def subir_video(categoria):
     if categoria not in categories:
         return jsonify({'message': 'La categoria no existe'}), 400
     
+    #convertir nombre del archivo a minusculas
+    nombre_archivo = archivo.filename.lower() #archivo.filename = nombre del archivo
+    
     #os.path.join() crea la ruta completa donde se guardará el archivo
-    path_archivo = os.path.join(app.config['UPLOAD_FOLDER'], categoria,archivo.filename) #combina la carpeta de subida (UPLOAD_FOLDER que contiene la ruta base de la carpeta uploads), con la categoria y con el nombre del archivo (file.filename)
+    path_archivo = os.path.join(app.config['UPLOAD_FOLDER'], categoria,nombre_archivo) #combina la carpeta de subida (UPLOAD_FOLDER que contiene la ruta base de la carpeta uploads), con la categoria y con el nombre del archivo 
 
     #verificar que no exista un video con el mismo nombre en la misma categoria en la base de datos
-    video = mongo.db.videos.find_one({'categoria': categoria, 'archivo': archivo.filename})
+    video = mongo.db.videos.find_one({'categoria': categoria, 'archivo': nombre_archivo})
     if video:
         return jsonify({'message': 'Ya existe un video con ese nombre en la categoria'})
     
@@ -335,7 +348,7 @@ def subir_video(categoria):
     archivo.save(path_archivo) #guarda el arhcivo en la carpeta
 
     uploaded = mongo.db.videos.insert_one({
-        'archivo': archivo.filename,
+        'archivo': nombre_archivo,
         "ruta_del_archivo": path_archivo,
         "user_id": user_id,
         "categoria": categoria
@@ -344,7 +357,7 @@ def subir_video(categoria):
     return jsonify({
         'message': 'Archivo subido correctamente',
         'id': str(uploaded.inserted_id),
-        'nombre_archivo': archivo.filename,
+        'nombre_archivo': nombre_archivo,
         'ruta': path_archivo,
         'id_user': str(user_id),
         'categoria': categoria
@@ -359,6 +372,8 @@ def obtener_videos(nombre_archivo):
     user = mongo.db.users.find_one({'_id': user_id})
     if not user:
         return jsonify({'message': 'No se encontro un usuario'}), 404
+    
+    nombre_archivo = nombre_archivo.lower()
     
     video = mongo.db.videos.find_one({
         'archivo': nombre_archivo,
@@ -423,6 +438,8 @@ def buscar(categoria):
     user = mongo.db.users.find_one({'_id': user_id})
     if not user:
         return jsonify({'message': 'No se encontro un usuario'}), 404
+    
+    categoria = categoria.lower()
 
     videos = mongo.db.videos.find({
         'user_id': user_id,
@@ -455,6 +472,9 @@ def borrar_video(categoria,nombre_video):
     user = mongo.db.users.find_one({'_id': user_id})
     if not user:
         return jsonify({'message': 'No se encontro un usuario'}), 404
+    
+    nombre_video = nombre_video.lower()
+    categoria = categoria.lower()
     
     video = mongo.db.videos.find_one({
         'user_id': user_id,
@@ -494,6 +514,9 @@ def actualizar_video(categoria, nombre_video):
     categories = ['abecedario', 'casa', 'comida', 'deportes', 'familia', 'numeros']
     if categoria not in categories:
         return jsonify({'message': 'La categoría no existe'}), 400
+    
+    nombre_video = nombre_video.lower()
+    categoria = categoria.lower()
 
     video = mongo.db.videos.find_one({
         'user_id': user_id,
@@ -532,6 +555,193 @@ def actualizar_video(categoria, nombre_video):
     else:
         return jsonify({'message': 'No se pudo actualizar el video'}), 400
 
+#endpoint crear nombre propio abecededario y que se reproduzca en lenguaje de señas
+@app.route('/crear_nombre_abecedario', methods=['POST'])
+@jwt_required()
+def crear_nombre_abecedario():
+    data = request.get_json()
+    nombre = data.get('nombre')
+    user_id = get_jwt_identity()
+    user_id = ObjectId(user_id)
+    
+    user = mongo.db.users.find_one({'_id': user_id})
+    if not user:
+        return jsonify({'message': 'El usuario no existe'}), 404
+    
+    if not nombre:
+        return jsonify({'message': 'No se proporcionó el nombre'}), 400
+
+    if not re.match(r'^[a-zA-Z\s]+$', nombre):
+        return jsonify({'message': 'El nombre solo puede contener letras y espacios'}),400
+    
+    nombre = nombre.lower()
+    
+    lista_videos = []
+
+    #.mov por ahorita de la mac
+    for letra in nombre:
+        buscar_video = mongo.db.videos.find_one({
+            'user_id': user_id,
+            'archivo': letra + '.mov', 
+            'categoria': 'abecedario'
+        })
+        if not buscar_video:
+            return jsonify({'message': f'No existe un video para la letra {letra}'}), 404
+        
+        # Convertir _id y user_id a cadena y añadir el video a la lista
+        buscar_video['_id'] = str(buscar_video['_id'])
+        buscar_video['user_id'] = str(buscar_video['user_id'])
+
+        # Verificar si el archivo realmente existe en el sistema de archivos
+        path_archivo = os.path.join('uploads', 'abecedario', buscar_video['archivo'])
+        if not os.path.exists(path_archivo):
+            return jsonify({'message': f'El video para la letra {letra} no se encuentra en la carpeta'}), 404
+
+        lista_videos.append(buscar_video)
+
+    #crear un documento que contenga el nombre creado y los videos asociados
+    nombre_data ={
+        'user_id': ObjectId(user_id),
+        'nombre': nombre,
+        'metodo_creacion': 'texto',
+        'videos': lista_videos
+    }
+
+    #insertarlo en la coleccion nombres
+    result = mongo.db.nombres.insert_one(nombre_data)
+
+    return jsonify({
+        'message': 'Se ha creado el nombre y se ha guardado',
+        '_id_nombre': str(result.inserted_id),
+        'nombre': nombre,
+        'metodo_creacion': 'texto',
+        'videos': lista_videos
+    }), 200
+    
+#endpoint reconocer nombre y traducir a lenguaje de señas 
+@app.route('/translate', methods=['POST'])
+@jwt_required()
+def translate():
+    user_id = get_jwt_identity()
+    user_id = ObjectId(user_id)
+    user = mongo.db.users.find_one({
+        '_id': user_id
+    })
+    if not user:
+        return jsonify({'message': 'El usuario no existe'}), 404
+    
+    if 'audio' not in request.files:
+        return jsonify({'message': 'No hay ningun archivo de audio'}), 400
+
+    archivo_audio = request.files['audio']
+    if archivo_audio == '':
+        return jsonify({'message': 'No se proporcionó ningún audio'}), 400
+    
+    nombre_archivo = archivo_audio.filename.lower()
+
+    audio_path = os.path.join(app.config['UPLOAD_FOLDER'], 'nombres_creados', nombre_archivo)
+    archivo_audio.save(audio_path)
+
+    # Reconocimiento de voz
+    recognizer = sr.Recognizer() #se crea instancia de Recognizer para poder convertir de audio a texto
+    try:
+        with sr.AudioFile(audio_path) as source: #se abre el arhcivo de audio con with y se le asigna a source
+            audio_data = recognizer.record(source) #el metodo record toma el contenido del archivo listo para ser procesado
+            text = recognizer.recognize_google(audio_data, language='es-ES') #convierte los datos de audio en texto utilizando la API de Google para reconocimiento de voz.
+    except sr.UnknownValueError:
+        return jsonify({'message': 'No se pudo entender el audio'}), 400
+    except sr.RequestError as e:
+        return jsonify({'message': f'Error en el servicio de reconocimiento: {e}'}), 500
+
+    # Convertir el texto a minúsculas y obtener letras
+    nombre = text.lower()
+    lista_videos = []
+    
+    for letra in nombre:
+        if letra.isalpha():  # Verifica si es una letra
+            buscar_video = mongo.db.videos.find_one({
+                'user_id': user_id,
+                'archivo': letra + '.mov',
+                'categoria': 'abecedario'
+            })
+            if not buscar_video:
+                return jsonify({'message': f'No existe un video para la letra "{letra}"'}), 404
+            
+            buscar_video['_id'] = str(buscar_video['_id'])
+            buscar_video['user_id'] = str(buscar_video['user_id'])
+            lista_videos.append(buscar_video)
+    nombre_data = {
+        'user_id': ObjectId(user_id),
+        'nombre': nombre,
+        'metodo_creacion': 'voz',
+        'videos': lista_videos
+    }
+
+    result = mongo.db.nombres.insert_one(nombre_data)
+
+    return jsonify({
+        'msg': 'Se ha creado el nombre y se ha guardado',
+        '_id_nombre': str(result.inserted_id),
+        'nombre': nombre,
+        'metodo_creacion': 'voz',
+        'videos': lista_videos
+    }), 200
+
+#endpoint obtener nombre creado del usuario
+@app.route('/nombre/<metodo_creacion>/<nombre>', methods=['GET'])
+@jwt_required()
+def obtener_nombre(metodo_creacion, nombre):
+    user_id = get_jwt_identity()
+    user_id = ObjectId(user_id)
+    user = mongo.db.users.find_one({'_id': user_id})
+    if not user:
+        return jsonify({'message': 'No se encontro el usuario'}), 404
+    
+    nombre = nombre.lower()
+    
+    nombre_data = mongo.db.nombres.find_one({
+        'user_id' : user_id,
+        'nombre': nombre,
+        'metodo_creacion': metodo_creacion
+    })
+
+    if not nombre_data:
+        return jsonify({'message': 'No se encontro el nombre'}), 404
+    
+    return jsonify({
+        'user_id': str(user_id),
+        'nombre': nombre_data['nombre'],
+        'metodo_creacion': nombre_data['metodo_creacion'],
+        'videos': nombre_data['videos']
+    }), 200
+
+#endpoint mostrar todos los nombres guardados del usuario
+@app.route('/nombres', methods=['GET'])
+@jwt_required()
+def mostrar_nombres():
+    user_id = get_jwt_identity()
+    user_id = ObjectId(user_id)
+    user = mongo.db.users.find_one({'_id': user_id})
+    if not user:
+        return jsonify({'message': 'No se encontro el usuario'}), 404
+    
+    nombres = mongo.db.nombres.find({'user_id': user_id})
+
+    if not nombres:
+        return jsonify({'message': 'No se encontro ningun nombre'}), 404
+
+    lista_nombres = []
+
+    for nombre in nombres:
+        lista_nombres.append({
+            '_id': str(nombre['_id']),
+            'user_id': str(nombre['user_id']),
+            'nombre': nombre['nombre'],
+            'metodo_creacion': nombre['metodo_creacion'],
+            'videos': nombre['videos']
+        })
+
+    return jsonify(lista_nombres)
 
 if __name__ == '__main__':
     app.run(debug=True)
