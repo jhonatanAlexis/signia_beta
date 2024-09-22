@@ -812,5 +812,44 @@ def obtener_preguntas(numero_pregunta, categoria):
         'categoria': pregunta['categoria']
     })
 
+#endpoint obtener respuesta
+@app.route('/respuestas/<numero_pregunta>/<categoria>', methods=['POST'])
+@jwt_required()
+def obtener_respuesta(numero_pregunta, categoria):
+    data = request.get_json()
+    respuesta = data.get('respuesta')
+    user_id = get_jwt_identity()
+    user_id = ObjectId(user_id)
+    user = mongo.db.users.find_one({'_id': user_id})
+    if not user:
+        return jsonify({'message': 'El usuario no existe'}), 400
+    
+    if not respuesta:
+        return jsonify({'message': 'No se envió la respuesta'}), 400
+    
+    categoria = categoria.lower()
+    categories = ['abecedario', 'casa', 'comida', 'deportes', 'familia', 'numeros']
+    if categoria not in categories:
+        return jsonify({'message': 'La categoría no existe. Categorías válidas: ' + ', '.join(categories)}), 400
+    
+    pregunta = mongo.db.preguntas.find_one({
+        'numero_pregunta': int(numero_pregunta),
+        'categoria': categoria
+    })
+
+    if not pregunta:
+        return jsonify({'message': 'No se encontro la pregunta'}), 404
+    
+    #verificar que la respuesta que dio el usuario este entre las opciones validas
+    opciones_validas = list(pregunta['opciones'])
+    if respuesta not in opciones_validas:
+        return jsonify({'message': 'La respuesta no esta en las opciones'}), 400
+    
+    es_correcta = respuesta == pregunta['respuesta'] #compara la respuesta dada por el usuario con la almacenada en la base de datos
+
+    return jsonify({
+        'es_correcta': es_correcta
+    }), 200
+
 if __name__ == '__main__':
     app.run(debug=True)
