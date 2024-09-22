@@ -405,6 +405,7 @@ def mis_videos():
         'user_id': user_id
     })
 
+    #para poder iterar correctamente toda la consulta
     lista_videos = list(videos) 
 
     if not lista_videos:
@@ -446,21 +447,23 @@ def buscar(categoria):
     if categoria not in categories:
         return jsonify({'message': 'La categoria no existe'}), 400
 
-    if not videos:
-        return jsonify({'message': 'No se encontro ningun video'}), 404
+    lista_videos = list(videos)
 
-    lista_videos = []
-
-    for video in videos:
-        lista_videos.append({
+    if not lista_videos:
+        return jsonify({'message': 'No se encontraron videos'}), 404
+    
+    videos_response = [
+        {
             'archivo': video['archivo'],
             'ruta_del_archivo': video['ruta_del_archivo'],
             'user_id': str(user_id),
             '_id': str(video['_id'])
-        })
+        }
+        for video in lista_videos
+    ]
 
     return jsonify({
-        'videos': lista_videos
+        'videos': videos_response
     })
 
 #endpoint borrar video
@@ -657,20 +660,21 @@ def mostrar_nombres():
     
     nombres = mongo.db.nombres.find({'user_id': user_id})
 
-    if not nombres:
+    lista_nombres = list(nombres)
+    if not lista_nombres:
         return jsonify({'message': 'No se encontro ningun nombre'}), 404
 
-    lista_nombres = []
-
-    for nombre in nombres:
-        lista_nombres.append({
-            '_id': str(nombre['_id']),
-            'user_id': str(nombre['user_id']),
+    videos_response = [
+        {
             'nombre': nombre['nombre'],
-            'videos': nombre['videos']
-        })
+            'videos': nombre['videos'],
+            'user_id': str(nombre['user_id']),
+            '_id': str(nombre['_id'])
+        }
+        for nombre in lista_nombres
+    ]
 
-    return jsonify(lista_nombres)
+    return jsonify(videos_response)
 
 #endpoint borrar un nombre creado
 @app.route('/borrar_nombre/<nombre>', methods=['DELETE'])
