@@ -37,6 +37,7 @@ def registrar():
     password = data.get('password')
     fecha_nacimiento = data.get('fecha_nacimiento') #opcional
     celular = data.get('celular') #opcional
+    rol = data.get('rol', 'user') #opcional y por defecto sera user
 
     nombre = nombre.lower()
     apellido_paterno = apellido_paterno.lower()
@@ -45,6 +46,9 @@ def registrar():
     #verifica que los campos obligatorios si esten
     if not nombre or not apellido_materno or not apellido_paterno or not email or not password:
         return jsonify({'message': 'Nombre, apellidos, email y contraseña son requeridos'}), 400
+    
+    if rol not in ['admin', 'user']:
+        return jsonify({'message': 'Rol inválido. Debe ser "admin" o "user" En minuscula.'}), 400
     
     if mongo.db.users.find_one({
         'email': email
@@ -59,7 +63,8 @@ def registrar():
         'apellido_paterno' : apellido_paterno,
         'apellido_materno' : apellido_materno,
         'email': email,
-        'password': hashed_password
+        'password': hashed_password,
+        'rol': rol
     }
 
     #VALIDAR
@@ -155,6 +160,7 @@ def editarPerfil():
     password = data.get('password')
     apellido_paterno = data.get('apellido_paterno')
     apellido_materno = data.get('apellido_materno')
+    rol = data.get('rol')
     user_id = get_jwt_identity()
 
     user_id = ObjectId(user_id)
@@ -204,6 +210,12 @@ def editarPerfil():
     if password:
         hashed_password = bcrypt.generate_password_hash(password).decode('utf-8')
         datos_actualizados['password'] = hashed_password
+
+    if rol: 
+        roles_validos = ['admin', 'user']
+        if rol not in roles_validos:
+            return jsonify({'message': f'Rol inválido. Roles válidos: {", ".join(roles_validos)}'}), 400
+        datos_actualizados['rol'] = rol
 
     # Actualización en la base de datos
     result = mongo.db.users.update_one(
@@ -719,7 +731,16 @@ def borrar_nombre(nombre):
 
 #endpooint crear preguntas SOLO ADMINISTRADOR
 @app.route('/admin/crear_preguntas', methods=['POST'])
+@jwt_required()
 def crear_preguntas():
+    user_id = get_jwt_identity()
+    user_id = ObjectId(user_id)
+    user = mongo.db.users.find_one({'_id': user_id})
+    if not user:
+        return jsonify({'message': 'No se encontro el usuario'}), 404
+    if user['rol'] != 'admin':
+        return jsonify({'message': 'Solo el administrador puede crear preguntas'}), 403
+    
     data = request.get_json()
     preguntas = data.get('preguntas')
     
@@ -760,7 +781,14 @@ def crear_preguntas():
     
 #endpoint obtener preguntas
 @app.route('/preguntas/<numero_pregunta>/<categoria>', methods=['GET'])
-def obtener_preguntas(numero_pregunta, categoria):    
+@jwt_required()
+def obtener_preguntas(numero_pregunta, categoria):
+    user_id = get_jwt_identity() 
+    user_id = ObjectId(user_id) 
+    user = mongo.db.usuarios.find_one({'_id': user_id})
+    if not user:
+        return jsonify({'message': 'El usuario no existe'}), 400
+    
     categoria = categoria.lower()
     
     categories = ['abecedario', 'casa', 'comida', 'deportes', 'familia', 'numeros']
