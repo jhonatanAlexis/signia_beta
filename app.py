@@ -322,7 +322,7 @@ def subir_video(categoria):
     #verificar que la categoria existe
     categories = ['abecedario', 'casa', 'comida', 'deportes', 'familia', 'numeros']
     if categoria not in categories:
-        return jsonify({'message': 'La categoria no existe'}), 400
+        return jsonify({'message': 'La categoría no existe. Categorías válidas: ' + ', '.join(categories)}), 400
     
     #convertir nombre del archivo a minusculas
     nombre_archivo = archivo.filename.lower() #archivo.filename = nombre del archivo
@@ -453,7 +453,7 @@ def buscar(categoria):
 
     categories = ['abecedario', 'casa', 'comida', 'deportes', 'familia', 'numeros']
     if categoria not in categories:
-        return jsonify({'message': 'La categoria no existe'}), 400
+        return jsonify({'message': 'La categoría no existe. Categorías válidas: ' + ', '.join(categories)}), 400
 
     lista_videos = list(videos)
 
@@ -524,7 +524,7 @@ def actualizar_video(categoria, nombre_video):
     
     categories = ['abecedario', 'casa', 'comida', 'deportes', 'familia', 'numeros']
     if categoria not in categories:
-        return jsonify({'message': 'La categoría no existe'}), 400
+        return jsonify({'message': 'La categoría no existe. Categorías válidas: ' + ', '.join(categories)}), 400
     
     nombre_video = nombre_video.lower()
     categoria = categoria.lower()
@@ -716,6 +716,73 @@ def borrar_nombre(nombre):
         return jsonify({'message': 'Nombre eliminado con exito'}), 200
     else:
         return jsonify({'message': 'No se pudo eliminar el nombre'}), 400
+
+#endpooint crear preguntas SOLO ADMINISTRADOR
+@app.route('/admin/crear_preguntas', methods=['POST'])
+def crear_preguntas():
+    data = request.get_json()
+    preguntas = data.get('preguntas')
+    
+    if not preguntas:
+        return jsonify({'message': 'No se recibio la informacion de las preguntas'}),
+
+    preguntas_data = []
+    numero_pregunta_por_categoria = {}  #diccionario se usará para almacenar el último número de pregunta para cada categoría
+
+    for pregunta in preguntas: 
+        categoria_actual = pregunta['categoria'] #guarda la categoria actual
+
+        if categoria_actual not in ['abecedario', 'casa', 'comida', 'deportes', 'familia', 'numeros']:
+            return jsonify({'message': f'La categoría "{categoria_actual}" no es válida.'}), 400
+
+        #numero_pregunta almacena el número de pregunta actual para la categoría, si no encuentra o sea
+        #es la primera vez que agregamos una pregunta para esa categoria devuleve 0 pero se le suma 1 por razones obvias
+        numero_pregunta = numero_pregunta_por_categoria.get(categoria_actual, 0) + 1
+
+        pregunta_data = {
+            'numero_pregunta': numero_pregunta,
+            'video': pregunta['video'],
+            'opciones': pregunta['opciones'],
+            'respuesta': pregunta['respuesta'],
+            'categoria': categoria_actual
+        }
+        preguntas_data.append(pregunta_data)
+
+        #Actualiza el contador para la categoría
+        numero_pregunta_por_categoria[categoria_actual] = numero_pregunta
+
+    result = mongo.db.preguntas.insert_many(preguntas_data)
+
+    if result.acknowledged:
+        return jsonify({'message': 'Preguntas creadas con exito'}), 200
+    else:
+        return jsonify({'message': 'No se pudo crear las preguntas'}), 400
+    
+#endpoint obtener preguntas
+@app.route('/preguntas/<numero_pregunta>/<categoria>', methods=['GET'])
+def obtener_preguntas(numero_pregunta, categoria):    
+    categoria = categoria.lower()
+    
+    categories = ['abecedario', 'casa', 'comida', 'deportes', 'familia', 'numeros']
+    if categoria not in categories:
+        return jsonify({'message': 'La categoría no existe. Categorías válidas: ' + ', '.join(categories)}), 400
+    
+    pregunta = mongo.db.preguntas.find_one({
+        'numero_pregunta': int(numero_pregunta),
+        'categoria': categoria
+    })
+
+    if not pregunta:
+        return jsonify({'message': 'No se encontro la pregunta'}), 404
+    
+    return jsonify({
+        '_id': str(pregunta['_id']),
+        'numero_pregunta': pregunta['numero_pregunta'],
+        'video': pregunta['video'],
+        'opciones': pregunta['opciones'],
+        'respuesta': pregunta['respuesta'],
+        'categoria': pregunta['categoria']
+    })
 
 if __name__ == '__main__':
     app.run(debug=True)
