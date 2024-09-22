@@ -408,18 +408,23 @@ def mis_videos():
     if not videos:
         return jsonify({'message': 'No se encontro ningun video'}), 404
 
-    lista_videos = []
+    lista_videos = list(videos) 
 
-    for video in videos:
-        lista_videos.append({
+    if not lista_videos:
+        return jsonify({'message': 'No se encontró ningún video'}), 404
+
+    videos_response = [
+        {
             'archivo': video['archivo'],
             'ruta_del_archivo': video['ruta_del_archivo'],
             'user_id': str(user_id),
             '_id': str(video['_id'])
-        })
+        }
+        for video in lista_videos
+    ]
 
     return jsonify({
-        'videos': lista_videos
+        'videos': videos_response
     }), 200
 
 #endpoint bsucar palabras por categoria
