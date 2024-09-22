@@ -405,9 +405,6 @@ def mis_videos():
         'user_id': user_id
     })
 
-    if not videos:
-        return jsonify({'message': 'No se encontro ningun video'}), 404
-
     lista_videos = list(videos) 
 
     if not lista_videos:
