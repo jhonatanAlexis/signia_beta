@@ -143,7 +143,7 @@ def yo():
     else:
         return jsonify({'message': 'Usuario no encontrado'}), 404
     
-#endpoint editar datos usuario
+#endpoint editar_perfil
 @app.route('/editarPerfil', methods=['PUT'])
 @jwt_required()
 def editarPerfil():
@@ -159,30 +159,23 @@ def editarPerfil():
 
     user_id = ObjectId(user_id)
 
-    nombre = nombre.lower()
-    apellido_paterno = apellido_paterno.lower()
-    apellido_materno = apellido_materno.lower()
-
     if not data:
         return jsonify({'message': 'No se recibieron datos para actualizar'}), 400
     
     # Verificamos si el usuario existe
-    usuario = mongo.db.users.find_one({
-        '_id': user_id
-    })
+    usuario = mongo.db.users.find_one({'_id': user_id})
     if not usuario:
-        return jsonify({
-            'message': 'Usuario no encontrado'
-        }), 404
+        return jsonify({'message': 'Usuario no encontrado'}), 404
 
-    #diccionario vacio
+    # Diccionario vacío para almacenar los campos a actualizar
     datos_actualizados = {}
 
+    # Validaciones de los campos opcionales
     if celular:
         if not re.match(r'^\d{10}$', celular):
             return jsonify({'message': 'Formato de celular invalido (10 dígitos)'}), 400
         datos_actualizados['celular'] = celular
-        
+
     if fecha_nacimiento:
         if not re.match(r'^\d{4}-\d{2}-\d{2}$', fecha_nacimiento):
             return jsonify({'message': 'Fecha de nacimiento debe ser en formato YYYY-MM-DD'}), 400
@@ -191,17 +184,17 @@ def editarPerfil():
     if nombre:
         if not re.match(r'^[a-zA-Z\s]+$', nombre):
             return jsonify({'message': 'Nombre debe contener solo caracteres alfabéticos y espacios'}), 400
-        datos_actualizados['nombre'] = nombre
+        datos_actualizados['nombre'] = nombre.lower()
 
     if apellido_paterno:
         if not re.match(r'^[a-zA-Z\s]+$', apellido_paterno):
             return jsonify({'message': 'Apellido paterno debe contener solo caracteres alfabéticos y espacios'}), 400
-        datos_actualizados['apellido_paterno'] = apellido_paterno
+        datos_actualizados['apellido_paterno'] = apellido_paterno.lower()
 
     if apellido_materno:
         if not re.match(r'^[a-zA-Z\s]+$', apellido_materno):
             return jsonify({'message': 'Apellido materno debe contener solo caracteres alfabéticos y espacios'}), 400
-        datos_actualizados['apellido_paterno'] = apellido_paterno
+        datos_actualizados['apellido_materno'] = apellido_materno.lower()
 
     if email:
         if not re.match(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$', email):
@@ -212,12 +205,13 @@ def editarPerfil():
         hashed_password = bcrypt.generate_password_hash(password).decode('utf-8')
         datos_actualizados['password'] = hashed_password
 
+    # Actualización en la base de datos
     result = mongo.db.users.update_one(
-        {'_id': user_id}, #filtro, lo que va a buscar
-        {'$set': datos_actualizados}, #actualizacion, lo que actualizara
+        {'_id': user_id},  # Filtro
+        {'$set': datos_actualizados},  # Actualización
     )
 
-    if result.modified_count > 0: #si la cuenta de cosas moficiadas es mayor a cero signifca que al menos un campo se actualizó 
+    if result.modified_count > 0:
         return jsonify({'message': 'Datos actualizados correctamente'}), 200
     else:
         return jsonify({'message': 'No se actualizaron datos'}), 400
@@ -446,6 +440,10 @@ def buscar(categoria):
         'categoria': categoria
     })
 
+    categories = ['abecedario', 'casa', 'comida', 'deportes', 'familia', 'numeros']
+    if categoria not in categories:
+        return jsonify({'message': 'La categoria no existe'}), 400
+
     if not videos:
         return jsonify({'message': 'No se encontro ningun video'}), 404
 
@@ -606,7 +604,6 @@ def crear_nombre_abecedario():
     nombre_data ={
         'user_id': ObjectId(user_id),
         'nombre': nombre,
-        'metodo_creacion': 'texto',
         'videos': lista_videos
     }
 
@@ -617,92 +614,13 @@ def crear_nombre_abecedario():
         'message': 'Se ha creado el nombre y se ha guardado',
         '_id_nombre': str(result.inserted_id),
         'nombre': nombre,
-        'metodo_creacion': 'texto',
-        'videos': lista_videos
-    }), 200
-    
-#endpoint reconocer nombre y traducir a lenguaje de señas 
-@app.route('/translate', methods=['POST'])
-@jwt_required()
-def translate():
-    user_id = get_jwt_identity()
-    user_id = ObjectId(user_id)
-    user = mongo.db.users.find_one({
-        '_id': user_id
-    })
-    if not user:
-        return jsonify({'message': 'El usuario no existe'}), 404
-    
-    if 'audio' not in request.files:
-        return jsonify({'message': 'No hay ningun archivo de audio'}), 400
-
-    archivo_audio = request.files['audio']
-    if archivo_audio == '':
-        return jsonify({'message': 'No se proporcionó ningún audio'}), 400
-    
-    # Validar formato de archivo CHECAR CUALES SON LOS FORMATOS
-    if not archivo_audio.filename.lower().endswith(('.wav', '.mp3', '.m4a')):
-        return jsonify({'message': 'Formato de archivo no válido. Aceptamos .wav, .mp3 o .m4a'}), 400
-    
-    nombre_archivo = archivo_audio.filename.lower()
-
-    audio_path = os.path.join(app.config['UPLOAD_FOLDER'], 'nombres_creados', nombre_archivo)
-    archivo_audio.save(audio_path)
-
-    # Reconocimiento de voz
-    recognizer = sr.Recognizer() #se crea instancia de Recognizer para poder convertir de audio a texto
-    try:
-        with sr.AudioFile(audio_path) as source: #se abre el arhcivo de audio con with y se le asigna a source
-            audio_data = recognizer.record(source) #el metodo record toma el contenido del archivo listo para ser procesado
-            text = recognizer.recognize_google(audio_data, language='es-ES') #convierte los datos de audio en texto utilizando la API de Google para reconocimiento de voz.
-    except sr.UnknownValueError:
-        return jsonify({'message': 'No se pudo entender el audio'}), 400
-    except sr.RequestError as e:
-        return jsonify({'message': f'Error en el servicio de reconocimiento: {e}'}), 500
-
-    #convierte el texto a minúsculas y obtiene las letras, eliminando espacios
-    nombre = ''.join(filter(str.isalpha, text.lower()))
-
-    if mongo.db.nombres.find_one({'nombre': nombre}):
-        return jsonify({'message': 'El nombre ya existe'}), 400
-
-    lista_videos = []
-    
-    for letra in nombre:
-        if letra.isalpha():  # Verifica si es una letra
-            buscar_video = mongo.db.videos.find_one({
-                'user_id': user_id,
-                'archivo': letra + '.mov',
-                'categoria': 'abecedario'
-            })
-            if not buscar_video:
-                return jsonify({'message': f'No existe un video para la letra "{letra}"'}), 404
-            
-            buscar_video['_id'] = str(buscar_video['_id'])
-            buscar_video['user_id'] = str(buscar_video['user_id'])
-            lista_videos.append(buscar_video)
-    nombre_data = {
-        'user_id': ObjectId(user_id),
-        'nombre': nombre,
-        'metodo_creacion': 'voz',
-        'ruta_archivo': audio_path,
-        'videos': lista_videos
-    }
-
-    result = mongo.db.nombres.insert_one(nombre_data)
-
-    return jsonify({
-        'msg': 'Se ha creado el nombre y se ha guardado',
-        '_id_nombre': str(result.inserted_id),
-        'nombre': nombre,
-        'metodo_creacion': 'voz',
         'videos': lista_videos
     }), 200
 
 #endpoint obtener nombre creado del usuario
-@app.route('/nombre/<metodo_creacion>/<nombre>', methods=['GET'])
+@app.route('/nombre/<nombre>', methods=['GET'])
 @jwt_required()
-def obtener_nombre(metodo_creacion, nombre):
+def obtener_nombre(nombre):
     user_id = get_jwt_identity()
     user_id = ObjectId(user_id)
     user = mongo.db.users.find_one({'_id': user_id})
@@ -713,8 +631,7 @@ def obtener_nombre(metodo_creacion, nombre):
     
     nombre_data = mongo.db.nombres.find_one({
         'user_id' : user_id,
-        'nombre': nombre,
-        'metodo_creacion': metodo_creacion
+        'nombre': nombre
     })
 
     if not nombre_data:
@@ -723,8 +640,6 @@ def obtener_nombre(metodo_creacion, nombre):
     return jsonify({
         'user_id': str(user_id),
         'nombre': nombre_data['nombre'],
-        'metodo_creacion': nombre_data['metodo_creacion'],
-        'ruta_archivo': nombre_data['ruta_archivo'],
         'videos': nombre_data['videos']
     }), 200
 
@@ -750,16 +665,15 @@ def mostrar_nombres():
             '_id': str(nombre['_id']),
             'user_id': str(nombre['user_id']),
             'nombre': nombre['nombre'],
-            'metodo_creacion': nombre['metodo_creacion'],
             'videos': nombre['videos']
         })
 
     return jsonify(lista_nombres)
 
 #endpoint borrar un nombre creado
-@app.route('/borrar_nombre/<metodo_creacion>/<nombre>', methods=['DELETE'])
+@app.route('/borrar_nombre/<nombre>', methods=['DELETE'])
 @jwt_required()
-def borrar_nombre(metodo_creacion, nombre):
+def borrar_nombre(nombre):
     user_id = get_jwt_identity()
     user_id = ObjectId(user_id)
     user = mongo.db.users.find_one({'_id': user_id})
@@ -767,12 +681,10 @@ def borrar_nombre(metodo_creacion, nombre):
         return jsonify({'message': 'No se encontro el usuario'}), 404
     
     nombre = nombre.lower()
-    metodo_creacion = metodo_creacion.lower()
     
     nombre_data = mongo.db.nombres.find_one({
         'user_id': user_id,
-        'nombre': nombre,
-        'metodo_creacion': metodo_creacion
+        'nombre': nombre
     })
 
     if not nombre_data:
@@ -780,15 +692,10 @@ def borrar_nombre(metodo_creacion, nombre):
     
     result = mongo.db.nombres.delete_one({
         'user_id': user_id,
-        'nombre': nombre,
-        'metodo_creacion': metodo_creacion
+        'nombre': nombre
     })
 
     if result.deleted_count > 0:
-        if metodo_creacion == 'voz':
-            ruta_archivo = nombre_data['ruta_archivo']
-            if os.path.exists(ruta_archivo):
-                os.remove(ruta_archivo)
         return jsonify({'message': 'Nombre eliminado con exito'}), 200
     else:
         return jsonify({'message': 'No se pudo eliminar el nombre'}), 400
