@@ -685,6 +685,7 @@ def translate():
         'user_id': ObjectId(user_id),
         'nombre': nombre,
         'metodo_creacion': 'voz',
+        'ruta_archivo': audio_path,
         'videos': lista_videos
     }
 
@@ -723,6 +724,7 @@ def obtener_nombre(metodo_creacion, nombre):
         'user_id': str(user_id),
         'nombre': nombre_data['nombre'],
         'metodo_creacion': nombre_data['metodo_creacion'],
+        'ruta_archivo': nombre_data['ruta_archivo'],
         'videos': nombre_data['videos']
     }), 200
 
@@ -753,6 +755,43 @@ def mostrar_nombres():
         })
 
     return jsonify(lista_nombres)
+
+#endpoint borrar un nombre creado
+@app.route('/borrar_nombre/<metodo_creacion>/<nombre>', methods=['DELETE'])
+@jwt_required()
+def borrar_nombre(metodo_creacion, nombre):
+    user_id = get_jwt_identity()
+    user_id = ObjectId(user_id)
+    user = mongo.db.users.find_one({'_id': user_id})
+    if not user:
+        return jsonify({'message': 'No se encontro el usuario'}), 404
+    
+    nombre = nombre.lower()
+    metodo_creacion = metodo_creacion.lower()
+    
+    nombre_data = mongo.db.nombres.find_one({
+        'user_id': user_id,
+        'nombre': nombre,
+        'metodo_creacion': metodo_creacion
+    })
+
+    if not nombre_data:
+        return jsonify({'message': 'No se encontro el nombre que se quiere eliminar'}), 404
+    
+    result = mongo.db.nombres.delete_one({
+        'user_id': user_id,
+        'nombre': nombre,
+        'metodo_creacion': metodo_creacion
+    })
+
+    if result.deleted_count > 0:
+        if metodo_creacion == 'voz':
+            ruta_archivo = nombre_data['ruta_archivo']
+            if os.path.exists(ruta_archivo):
+                os.remove(ruta_archivo)
+        return jsonify({'message': 'Nombre eliminado con exito'}), 200
+    else:
+        return jsonify({'message': 'No se pudo eliminar el nombre'}), 400
 
 if __name__ == '__main__':
     app.run(debug=True)
