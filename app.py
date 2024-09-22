@@ -326,17 +326,25 @@ def subir_video(categoria):
     
     #convertir nombre del archivo a minusculas
     nombre_archivo = archivo.filename.lower() #archivo.filename = nombre del archivo
+    base_name, extension = os.path.splitext(nombre_archivo) #se utiliza para dividir el nombre del archivo y la extension 
     
     #os.path.join() crea la ruta completa donde se guardará el archivo
     path_archivo = os.path.join(app.config['UPLOAD_FOLDER'], categoria,nombre_archivo) #combina la carpeta de subida (UPLOAD_FOLDER que contiene la ruta base de la carpeta uploads), con la categoria y con el nombre del archivo 
 
+    # Generar un nuevo nombre si el archivo ya existe
+    contador = 1
+    while os.path.exists(path_archivo):
+        nuevo_nombre = f"{base_name}_{contador}{extension}"
+        path_archivo = os.path.join(app.config['UPLOAD_FOLDER'], categoria, nuevo_nombre)
+        contador += 1
+
     #verificar que no exista un video con el mismo nombre en la misma categoria en la base de datos
-    video = mongo.db.videos.find_one({'categoria': categoria, 'archivo': nombre_archivo})
+    video = mongo.db.videos.find_one({
+        'categoria': categoria, 
+        'user_id': user_id,
+        'archivo': nombre_archivo
+    })
     if video:
-        return jsonify({'message': 'Ya existe un video con ese nombre en la categoria'})
-    
-    #verificar que no exista un video con el mismo nombre en la misma categoria en las carpetas
-    if os.path.exists(path_archivo):
         return jsonify({'message': 'Ya existe un video con ese nombre en la categoria'})
     
     archivo.save(path_archivo) #guarda el arhcivo en la carpeta
@@ -579,7 +587,10 @@ def crear_nombre_abecedario():
     
     nombre = nombre.lower()
 
-    if mongo.db.nombres.find_one({'nombre': nombre}):
+    if mongo.db.nombres.find_one({
+        'nombre': nombre,
+        'user_id': user_id
+    }):
         return jsonify({'message': 'El nombre ya existe'}), 400
     
     lista_videos = []
