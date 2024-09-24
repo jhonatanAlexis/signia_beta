@@ -354,7 +354,7 @@ def subir_video(categoria):
     video = mongo.db.videos.find_one({
         'categoria': categoria, 
         'user_id': user_id,
-        'archivo': nombre_archivo
+        'archivo': base_name # Compara solo el nombre sin la extensión
     })
     if video:
         return jsonify({'message': 'Ya existe un video con ese nombre en la categoria'})
@@ -362,7 +362,7 @@ def subir_video(categoria):
     archivo.save(path_archivo) #guarda el arhcivo en la carpeta
 
     uploaded = mongo.db.videos.insert_one({
-        'archivo': nombre_archivo,
+        'archivo': base_name,
         "ruta_del_archivo": path_archivo,
         "user_id": user_id,
         "categoria": categoria
@@ -371,7 +371,7 @@ def subir_video(categoria):
     return jsonify({
         'message': 'Archivo subido correctamente',
         'id': str(uploaded.inserted_id),
-        'nombre_archivo': nombre_archivo,
+        'nombre_archivo': base_name,
         'ruta': path_archivo,
         'id_user': str(user_id),
         'categoria': categoria
@@ -607,11 +607,10 @@ def crear_nombre_abecedario():
     
     lista_videos = []
 
-    #.mov por ahorita de la mac
     for letra in nombre:
         buscar_video = mongo.db.videos.find_one({
             'user_id': user_id,
-            'archivo': letra + '.mov', 
+            'archivo': letra, 
             'categoria': 'abecedario'
         })
         if not buscar_video:
@@ -621,10 +620,7 @@ def crear_nombre_abecedario():
         buscar_video['_id'] = str(buscar_video['_id'])
         buscar_video['user_id'] = str(buscar_video['user_id'])
 
-        # Verificar si el archivo realmente existe en el sistema de archivos
-        path_archivo = os.path.join('uploads', 'abecedario', buscar_video['archivo'])
-        if not os.path.exists(path_archivo):
-            return jsonify({'message': f'El video para la letra {letra} no se encuentra en la carpeta'}), 404
+        
 
         lista_videos.append(buscar_video)
 
