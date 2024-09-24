@@ -611,7 +611,7 @@ def crear_nombre_abecedario():
     for letra in nombre:
         buscar_video = mongo.db.videos.find_one({
             'user_id': user_id,
-            'archivo': letra, 
+            'archivo': letra + '.mov', 
             'categoria': 'abecedario'
         })
         if not buscar_video:
