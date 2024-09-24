@@ -338,7 +338,7 @@ def subir_video(categoria):
     
     #convertir nombre del archivo a minusculas
     nombre_archivo = archivo.filename.lower() #archivo.filename = nombre del archivo
-    base_name, extension = os.path.splitext(nombre_archivo) #se utiliza para dividir el nombre del archivo y la extension 
+    base_name, extension = os.path.splitext(nombre_archivo) #se utiliza para dividir el nombre del archivo y la extension ->  base_name(0) extension(1) 
     
     #os.path.join() crea la ruta completa donde se guardará el archivo
     path_archivo = os.path.join(app.config['UPLOAD_FOLDER'], categoria,nombre_archivo) #combina la carpeta de subida (UPLOAD_FOLDER que contiene la ruta base de la carpeta uploads), con la categoria y con el nombre del archivo 
