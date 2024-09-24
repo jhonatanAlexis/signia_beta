@@ -558,6 +558,9 @@ def actualizar_video(categoria, nombre_video):
     archivo = request.files['archivo']
     if archivo.filename == '':
         return jsonify({'message': 'No se seleccionó un archivo'}), 400
+    
+    # Obtener el nombre del archivo sin la extensión
+    base_name = os.path.splitext(archivo.filename)[0]
 
     # Eliminar el archivo existente si se encuentra 
     if os.path.exists(ruta_archivo_existente):
@@ -570,7 +573,7 @@ def actualizar_video(categoria, nombre_video):
     # Actualizar la base de datos
     resultado = mongo.db.videos.update_one(
         {'user_id': user_id, 'archivo': nombre_video, 'categoria': categoria},
-        {'$set': {'archivo': archivo.filename, 'ruta_del_archivo': path_archivo}}
+        {'$set': {'archivo': base_name, 'ruta_del_archivo': path_archivo}}
     )
 
     if resultado.modified_count > 0:
@@ -770,8 +773,15 @@ def crear_preguntas():
 
     result = mongo.db.preguntas.insert_many(preguntas_data)
 
+    #convertir el _id de cada pregunta insertada a cadena
+    for pregunta in preguntas_data:
+        pregunta['_id'] = str(result.inserted_ids[preguntas_data.index(pregunta)])
+
     if result.acknowledged:
-        return jsonify({'message': 'Preguntas creadas con exito'}), 200
+        return jsonify({
+            'message': 'Preguntas creadas correctamente',
+            'preguntas': preguntas_data
+        }), 200
     else:
         return jsonify({'message': 'No se pudo crear las preguntas'}), 400
     
@@ -781,7 +791,7 @@ def crear_preguntas():
 def obtener_preguntas(numero_pregunta, categoria):
     user_id = get_jwt_identity() 
     user_id = ObjectId(user_id) 
-    user = mongo.db.usuarios.find_one({'_id': user_id})
+    user = mongo.db.users.find_one({'_id': user_id})
     if not user:
         return jsonify({'message': 'El usuario no existe'}), 400
     
