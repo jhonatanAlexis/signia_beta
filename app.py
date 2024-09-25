@@ -39,9 +39,10 @@ def registrar():
     celular = data.get('celular') #opcional
     rol = data.get('rol', 'user') #opcional y por defecto sera user
 
-    nombre = nombre.lower()
-    apellido_paterno = apellido_paterno.lower()
-    apellido_materno = apellido_materno.lower()
+    #convierte a minusculas solo si no es none
+    nombre = nombre.lower() if nombre else None
+    apellido_paterno = apellido_paterno.lower() if apellido_paterno else None
+    apellido_materno = apellido_materno.lower() if apellido_materno else None
     
     #verifica que los campos obligatorios si esten
     if not nombre or not apellido_materno or not apellido_paterno or not email or not password:
