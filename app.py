@@ -30,7 +30,7 @@ cloudinary.config(
     api_secret=CloudConfig.API_SECRET
 )
 
-# Inicializa la base de datos y GridFS
+# Inicializa la base de datos
 init_db(app)
 
 # Inicializa Bcrypt y JWTManager
